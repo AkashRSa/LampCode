@@ -55,7 +55,6 @@ void loop()
   if (receivedInt > 1)
   {
     updateColorValues();
-    // Serial.println(blueValue);
   }
   spinNeopixelLedsColor(0, 0, 12, lengthOfFlashInMS, numberOfLEDs, redValue, greenValue, blueValue);
   display.display();
@@ -66,7 +65,6 @@ void callback(char *topic, byte *payload, unsigned int length)
   char p[length + 1];
   memcpy(p, payload, length);
   p[length] = NULL;
-  Serial.println(p);
   receivedInt = atoll(p);
   Serial.print("MQTT: ");
   Serial.println(receivedInt);
@@ -107,4 +105,12 @@ void updateColorValues()
   greenValue = temp % 1000;
   temp = temp / 1000;
   redValue = temp % 1000;
+
+  if (on == 1)
+  {
+    redValue = 0;
+    greenValue = 0;
+    blueValue = 0;
+  }
+  // analogWrite(LED_PIN, brightness);
 }
