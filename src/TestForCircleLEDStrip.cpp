@@ -11,6 +11,8 @@
 
 void setup();
 void loop();
+void changeNeopixelColor(int pixelNum, uint8_t red, uint8_t green, uint8_t blue);
+void changeAllNeopixelColors(uint8_t red, uint8_t green, uint8_t blue);
 void spinNeopixelLedsColor(int startIndex, int targetIndex, int numFlashes, int flashDuration, int NUM_LEDS, uint8_t red, uint8_t green, uint8_t blue);
 void updateColorValues();
 #line 6 "c:/Users/Akash/IoTCamp2023/TestForCircleLEDStrip/src/TestForCircleLEDStrip.ino"
@@ -67,7 +69,8 @@ void loop()
   {
     updateColorValues();
   }
-  spinNeopixelLedsColor(0, 0, 12, lengthOfFlashInMS, numberOfLEDs, redValue, greenValue, blueValue);
+  // spinNeopixelLedsColor(0, 0, 12, lengthOfFlashInMS, numberOfLEDs, redValue, greenValue, blueValue);
+  changeAllNeopixelColors(redValue, greenValue, blueValue);
   display.display();
 }
 
@@ -81,12 +84,26 @@ void callback(char *topic, byte *payload, unsigned int length)
   Serial.println(receivedInt);
 }
 
+void changeNeopixelColor(int pixelNum, uint8_t red, uint8_t green, uint8_t blue)
+{
+  strip.setPixelColor(pixelNum, strip.Color(red, green, blue));
+  strip.show();
+}
+
+void changeAllNeopixelColors(uint8_t red, uint8_t green, uint8_t blue)
+{
+  for (int i = 0; i < numberOfLEDs + 1; i++)
+  {
+    strip.setPixelColor(i, strip.Color(red, green, blue));
+    strip.show();
+  }
+}
+
 void spinNeopixelLedsColor(int startIndex, int targetIndex, int numFlashes, int flashDuration, int NUM_LEDS, uint8_t red, uint8_t green, uint8_t blue)
 {
   for (int i = 0; i < numFlashes; i++)
   {
-    strip.setPixelColor(targetIndex, strip.Color(red, green, blue));
-    strip.show();
+    changeNeopixelColor(targetIndex, red, green, blue);
     delay(flashDuration);
 
     strip.setPixelColor(targetIndex, strip.Color(0, 0, 0));
@@ -123,5 +140,7 @@ void updateColorValues()
     greenValue = 0;
     blueValue = 0;
   }
-  // analogWrite(LED_PIN, brightness);
+  redValue = map(brightness, 0, 255, 0, redValue);
+  greenValue = map(brightness, 0, 255, 0, greenValue);
+  blueValue = map(brightness, 0, 255, 0, blueValue);
 }
