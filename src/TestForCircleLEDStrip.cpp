@@ -8,33 +8,44 @@
 #include "MQTT.h"
 #include "oled-wing-adafruit.h"
 #include "blynk.h"
+#include "SparkFun_VCNL4040_Arduino_Library.h"
 
 void setup();
 void loop();
 void changeNeopixelColor(int pixelNum, uint8_t red, uint8_t green, uint8_t blue);
 void changeAllNeopixelColors(uint8_t red, uint8_t green, uint8_t blue);
-void spinNeopixelLedsColor(int startIndex, int targetIndex, int numFlashes, int flashDuration, int NUM_LEDS, uint8_t red, uint8_t green, uint8_t blue);
+void spinNeopixelLedsColor(int startIndex, int targetIndex, int numFlashes, int flashDuration, int NUM_LEDS);
 void updateColorValues();
-#line 6 "c:/Users/Akash/IoTCamp2023/TestForCircleLEDStrip/src/TestForCircleLEDStrip.ino"
-String topicName = "gestureLamp"; // has to be changed to an agreed upon topic
+#line 7 "c:/Users/Akash/IoTCamp2023/TestForCircleLEDStrip/src/TestForCircleLEDStrip.ino"
+SYSTEM_THREAD(ENABLED);
+
+String subscribeTopic = "gestureLamp";
+String publishTopic = "gestureLamp2";
+#define VCNL 0x60
 
 int numberOfLEDs = 12;
-int LED_PIN = D2;
+int LED_PIN = D8;
 
 // below variables are received from MQTT
-volatile int64_t receivedInt = 0;
+volatile int64_t receivedInt = 2552552552550;
 
 volatile int redValue = 0;
 volatile int blueValue = 1;
 volatile int greenValue = 0;
-int on = 0;
+int onAndSpin = 0;
 int brightness = 0;
 
+bool readyToUpdate = true;
+
+void readyToUpdateFunc();
+
+Timer readyToUpdateTimer(1000, readyToUpdateFunc, true);
+
 int lengthOfFlashInMS = 50;
+int setProximityValue = 10;
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(numberOfLEDs, LED_PIN, WS2812);
-
-SYSTEM_THREAD(ENABLED);
+VCNL4040 proximitySensor;
 
 void callback(char *topic, byte *payload, unsigned int length);
 
@@ -43,14 +54,16 @@ OledWingAdafruit display;
 
 void setup()
 {
+  Wire.begin();
   Serial.begin(9600);
-  while (!Serial.isConnected())
-  {
-  }
   display.setup();
   strip.begin();
   strip.show();
-  client.subscribe(topicName);
+  client.subscribe(subscribeTopic);
+  proximitySensor.begin();
+  proximitySensor.powerOnAmbient();
+  proximitySensor.powerOnProximity();
+  setProximityValue = proximitySensor.getProximity();
 }
 
 void loop()
@@ -63,14 +76,38 @@ void loop()
   else
   {
     client.connect(System.deviceID());
-    client.subscribe(topicName);
+    client.subscribe(subscribeTopic);
   }
-  if (receivedInt > 1)
+  uint16_t proximityToObject = proximitySensor.getProximity();
+  if (proximityToObject < setProximityValue && readyToUpdate)
   {
-    updateColorValues();
+    readyToUpdate = false;
+    readyToUpdateTimer.start();
+    client.publish(publishTopic, "1");
+    if (receivedInt > 1)
+    {
+      updateColorValues();
+    }
+    if (onAndSpin == 2)
+    {
+      spinNeopixelLedsColor(0, 0, 12, lengthOfFlashInMS, numberOfLEDs);
+    }
+    else if (onAndSpin == 0)
+    {
+      changeAllNeopixelColors(redValue, greenValue, blueValue);
+    }
+    else
+    {
+      changeAllNeopixelColors(0, 0, 0);
+    }
   }
-  // spinNeopixelLedsColor(0, 0, 12, lengthOfFlashInMS, numberOfLEDs, redValue, greenValue, blueValue);
-  changeAllNeopixelColors(redValue, greenValue, blueValue);
+  else if (readyToUpdate)
+  {
+    readyToUpdate = false;
+    readyToUpdateTimer.start();
+    client.publish(publishTopic, "0");
+  }
+  Serial.println(proximityToObject);
   display.display();
 }
 
@@ -86,6 +123,7 @@ void callback(char *topic, byte *payload, unsigned int length)
 
 void changeNeopixelColor(int pixelNum, uint8_t red, uint8_t green, uint8_t blue)
 {
+  updateColorValues();
   strip.setPixelColor(pixelNum, strip.Color(red, green, blue));
   strip.show();
 }
@@ -99,11 +137,11 @@ void changeAllNeopixelColors(uint8_t red, uint8_t green, uint8_t blue)
   }
 }
 
-void spinNeopixelLedsColor(int startIndex, int targetIndex, int numFlashes, int flashDuration, int NUM_LEDS, uint8_t red, uint8_t green, uint8_t blue)
+void spinNeopixelLedsColor(int startIndex, int targetIndex, int numFlashes, int flashDuration, int NUM_LEDS)
 {
   for (int i = 0; i < numFlashes; i++)
   {
-    changeNeopixelColor(targetIndex, red, green, blue);
+    changeNeopixelColor(targetIndex, redValue, greenValue, blueValue);
     delay(flashDuration);
 
     strip.setPixelColor(targetIndex, strip.Color(0, 0, 0));
@@ -124,7 +162,7 @@ void spinNeopixelLedsColor(int startIndex, int targetIndex, int numFlashes, int 
 void updateColorValues()
 {
   int64_t temp = receivedInt;
-  on = temp % 10;
+  onAndSpin = temp % 10; // 0 is on and spin, 1 is off and spin, 2 is on and lock, 3 is off and lock
   temp = temp / 10;
   brightness = temp % 1000;
   temp = temp / 1000;
@@ -133,8 +171,7 @@ void updateColorValues()
   greenValue = temp % 1000;
   temp = temp / 1000;
   redValue = temp % 1000;
-
-  if (on == 1)
+  if (onAndSpin == 1 || onAndSpin == 3)
   {
     redValue = 0;
     greenValue = 0;
@@ -143,4 +180,9 @@ void updateColorValues()
   redValue = map(brightness, 0, 255, 0, redValue);
   greenValue = map(brightness, 0, 255, 0, greenValue);
   blueValue = map(brightness, 0, 255, 0, blueValue);
+}
+
+void readyToUpdateFunc()
+{
+  readyToUpdate = true;
 }
